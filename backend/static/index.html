@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Platform</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Auth Section -->
+        <section id="auth-section" class="screen active">
+            <div class="glass-card auth-container">
+                <h1 id="auth-title">Login</h1>
+                <form id="auth-form">
+                    <input type="text" id="username" placeholder="Username" required>
+                    <input type="password" id="password" placeholder="Password" required>
+                    <button type="submit" id="auth-btn">Login</button>
+                </form>
+                <p id="auth-switch-text">Don't have an account? <a href="#" id="auth-switch-link">Sign up</a></p>
+                <div id="auth-error" class="error-msg"></div>
+            </div>
+        </section>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" class="screen">
+            <header class="glass-header">
+                <h2>Dashboard</h2>
+                <nav>
+                    <button id="nav-dashboard" class="nav-btn active">Home</button>
+                    <button id="nav-profile" class="nav-btn">Profile</button>
+                    <button id="nav-logout" class="nav-btn">Logout</button>
+                </nav>
+            </header>
+            <main class="dashboard-content">
+                <div class="glass-card rates-table-container">
+                    <h3>Current Rates</h3>
+                    <table id="rates-table">
+                        <thead>
+                            <tr>
+                                <th>Currency</th>
+                                <th>Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rates will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="glass-card chart-container">
+                    <h3>Rates History</h3>
+                    <canvas id="ratesChart"></canvas>
+                </div>
+            </main>
+        </section>
+
+        <!-- Profile Section -->
+        <section id="profile-section" class="screen">
+            <header class="glass-header">
+                <h2>Profile Settings</h2>
+                <nav>
+                    <button id="nav-dashboard-back" class="nav-btn">Dashboard</button>
+                    <button id="nav-logout-profile" class="nav-btn">Logout</button>
+                </nav>
+            </header>
+            <main class="profile-content">
+                <div class="glass-card profile-container">
+                    <h3>Settings</h3>
+                    <p>Profile settings will be available here.</p>
+                </div>
+            </main>
+        </section>
+    </div>
+    <script src="/app.js"></script>
+</body>
+</html>
