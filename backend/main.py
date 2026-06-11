@@ -1,22 +1,35 @@
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from pydantic import BaseModel
 from typing import List
+from sqlalchemy import func
+from datetime import datetime, timezone
 
 from . import models, database, auth
 from .config import settings
+from .tasks import periodic_rate_fetcher
 
 models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(periodic_rate_fetcher())
+    yield
+    task.cancel()
+
+app = FastAPI(lifespan=lifespan)
 
 class UserCreate(BaseModel):
-    email: str
+    username: str
     password: str
 
 class UserLogin(BaseModel):
-    email: str
+    username: str
     password: str
 
 class UserResponse(BaseModel):
@@ -41,20 +54,20 @@ def get_current_user_dep(request: Request, db: Session = Depends(database.get_db
 
 @app.post("/auth/signup", response_model=UserResponse)
 def signup(user: UserCreate, db: Session = Depends(database.get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    db_user = db.query(models.User).filter(models.User.email == user.username).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     hashed_password = auth.get_password_hash(user.password)
-    new_user = models.User(email=user.email, hashed_password=hashed_password)
+    new_user = models.User(email=user.username, hashed_password=hashed_password)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     return new_user
 
 @app.post("/auth/login")
-def login(user: UserLogin, response: Response, db: Session = Depends(database.get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if not db_user or not auth.verify_password(user.password, db_user.hashed_password):
+def login(response: Response, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(database.get_db)):
+    db_user = db.query(models.User).filter(models.User.email == form_data.username).first()
+    if not db_user or not auth.verify_password(form_data.password, db_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -82,21 +95,29 @@ def logout(response: Response):
 
 @app.get("/api/rates", response_model=List[RateResponse])
 def get_rates(current_user: models.User = Depends(get_current_user_dep), db: Session = Depends(database.get_db)):
-    # Mock data for MVP
-    rates = [
-        {"currency": "USD", "rate": 1.0},
-        {"currency": "EUR", "rate": 0.92},
-        {"currency": "GBP", "rate": 0.79},
-    ]
-    return rates
+    # Fetch the latest rate for each currency using a subquery for the max timestamp
+    subquery = db.query(
+        models.CurrencyHistory.currency,
+        func.max(models.CurrencyHistory.timestamp).label("max_timestamp")
+    ).group_by(models.CurrencyHistory.currency).subquery()
+
+    latest_rates = db.query(models.CurrencyHistory).join(
+        subquery,
+        (models.CurrencyHistory.currency == subquery.c.currency) &
+        (models.CurrencyHistory.timestamp == subquery.c.max_timestamp)
+    ).all()
+
+    return latest_rates
 
 @app.get("/api/rates/history", response_model=List[RateHistoryResponse])
 def get_rates_history(current_user: models.User = Depends(get_current_user_dep), db: Session = Depends(database.get_db)):
-    # Mock data for MVP
-    history = [
-        {"currency": "EUR", "rate": 0.91, "timestamp": "2023-10-26T10:00:00Z"},
-        {"currency": "EUR", "rate": 0.92, "timestamp": "2023-10-27T10:00:00Z"},
-        {"currency": "GBP", "rate": 0.78, "timestamp": "2023-10-26T10:00:00Z"},
-        {"currency": "GBP", "rate": 0.79, "timestamp": "2023-10-27T10:00:00Z"},
-    ]
-    return history
+    # Fetch history for the last 7 days
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    history = db.query(models.CurrencyHistory).filter(
+        models.CurrencyHistory.timestamp >= seven_days_ago
+    ).order_by(models.CurrencyHistory.timestamp.asc()).all()
+    
+    # Format the timestamp for the response to match the expected format string
+    return [{"currency": h.currency, "rate": h.rate, "timestamp": h.timestamp.isoformat()} for h in history]
+
+app.mount("/", StaticFiles(directory="backend/static", html=True), name="static")
